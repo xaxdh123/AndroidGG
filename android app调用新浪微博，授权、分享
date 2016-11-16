@@ -1,0 +1,349 @@
+通过SSO方式授权，分享。
+我的一个app要用到微博的授权和分享功能。简单就是根据用户输入的文本生成一个二维码，然后把该二维码分享到微博上，已经放到github上，请大家指教，欢迎fork哦。
+https://github.com/ihyperwin/QRCodeGenius
+ 
+首先放上新浪微博开发平台的github Demo地址  
+https://github.com/sinaweibosdk/weibo_android_sdk
+ 
+app的微博授权和分享参考：http://www.xuebuyuan.com/1741896.html  &&　sina Demo
+采用SSO的授权机制，本应用---》微博客户端----》本应用
+【APP携带要分享的数据-----跳转到微博客户端----（授权或登录）----分享-----返回APP】
+ 
+成为开发者
+
+打开新浪开发平台，都应该有新浪微博账号吧，登录好后，在网页右上角点击个人信息-编辑开发者信息：
+
+首先你要成为一名开发者，类型的话我选择的是个人，我只是为了在APP里实现分享功能，并不会延伸到支付等高级API，所以选择了个人开发者，完成后会给邮箱发邮件。 关于身份认证和信息完善，在这之前已经可以生成了App Key和App Secret了，所以不用认证也可以实现微博的授权和分享功能了，但是发微博时，会显示“来自未通过审核应用”，认证时需要上传证件照，验证手机号码（PS. 新浪，验证手机还需要发短信啊，浪费我两角钱啊，有木有），然后完善app信息等，然后坐等审核。
+ 
+创建应用
+
+开发平台，点击管理中心，在这个界面我们需要创建一个应用，以供sina识别我们自己的APP。
+
+sina说的很明确了，创建一个应用，得到appkey，就能测试了，至于之后的审核、上线，就看你的需求了，不需要审核，就可以实现分享的功能！
+ 
+创建应用
+
+创建应用-移动APP应用地址什么之类的可以随意写（如果你只是demo）。
+ 
+编辑应用
+
+创建好后，记住APP_KEY，这是你身份标识，然后编辑应用：
+你的APP是什么包名，这里就填什么，不一致的话，不能通过验证。
+Android签名是sina让你使用它的APK，输入包名，生成一个唯一的MD5校验码(注意，输入包名时，需要将app先装入手机中)
+
+http://open.weibo.com/wiki/SDK 寻找Android SDK，下载下来，打开后有一个app_signatures.apk，部署到手机里，运行生成一个DM5签名，复制到网页中来。
+Android下载地址就无所谓了，可以随意写。
+ 
+高级信息
+
+打开高级信息，编辑OAuth2.0 授权设置，因为是移动APP，我们要填写一个授权回调页，否则获取不到access_token，在这里我填写的是www.sina.com，【注意哦，这里填写什么，项目中的REDIRECT_URL的值就是什么，这俩得保持一直，否则验证不通过，就会遇到error:redicect_uri_mismatch
+错误】，取消授权页这里可以什么都不输入，目前用不到。
+
+关联账号
+
+打开测试账号，输入自己的微博名称，关联一下，到此为止，已经成功了一半。
+ 
+开发测试
+
+和原文有较大出入，看这里，看这里。
+导入jar包
+
+把下载好的weibosdkcore.jar导入到项目中的libs。
+ 
+配置跳转Action
+
+在AndroidManifest.xml中，在需要接受消息（微博APP分享成功返回到自己APP）的类里声明对应的Action：
+com.sina.weibo.sdk.action.ACTION_SDK_REQ_ACTIVITY如下代码：
+ 
+          <activity
+            android:configChanges="orientation|screenSize"
+            android:name="com.ihyperwin.GenerateQRCodeActivity"
+            android:screenOrientation="portrait"
+            android:theme="@android:style/Theme.NoTitleBar.Fullscreen"
+            android:windowSoftInputMode="stateAlwaysHidden" >
+             <intent-filter>
+                <action android:name="com.sina.weibo.sdk.action.ACTION_SDK_REQ_ACTIVITY" />
+                <category android:name="android.intent.category.DEFAULT" />
+            </intent-filter>
+        </activity>
+对应的Activity要实现IWeiboHandler.Response接口
+ 
+package com.ihyperwin;
+
+import com.google.zxing.WriterException;
+import com.ihyperwin.R;
+import com.sina.weibo.sdk.api.ImageObject;
+import com.sina.weibo.sdk.api.WeiboMessage;
+import com.sina.weibo.sdk.api.share.BaseResponse;
+import com.sina.weibo.sdk.api.share.IWeiboDownloadListener;
+import com.sina.weibo.sdk.api.share.IWeiboHandler;
+import com.sina.weibo.sdk.api.share.IWeiboShareAPI;
+import com.sina.weibo.sdk.api.share.SendMessageToWeiboRequest;
+import com.sina.weibo.sdk.api.share.WeiboShareSDK;
+import com.sina.weibo.sdk.auth.Oauth2AccessToken;
+import com.sina.weibo.sdk.auth.WeiboAuth;
+import com.sina.weibo.sdk.auth.WeiboAuthListener;
+import com.sina.weibo.sdk.auth.sso.SsoHandler;
+import com.sina.weibo.sdk.constant.WBConstants;
+import com.sina.weibo.sdk.exception.WeiboException;
+import com.sina.weibo.sdk.exception.WeiboShareException;
+import com.sina.weibo.AccessTokenKeeper;
+import com.sina.weibo.Constants;
+import com.zxing.encoding.EncodingHandler;
+
+import android.app.Activity;
+import android.content.Intent;
+import android.graphics.Bitmap;
+import android.graphics.drawable.BitmapDrawable;
+import android.os.Bundle;
+import android.text.TextUtils;
+import android.util.Log;
+import android.view.View;
+import android.view.View.OnClickListener;
+import android.widget.Button;
+import android.widget.EditText;
+import android.widget.ImageView;
+import android.widget.Toast;
+
+public class GenerateQRCodeActivity extends Activity implements
+		IWeiboHandler.Response {
+
+	private EditText qrStrEditText;
+
+	private ImageView qrImgImageView;
+
+	/** 微博微博分享接口实例 */
+	private IWeiboShareAPI mWeiboShareAPI = null;
+
+	/** 微博 Web 授权类，提供登陆等功能 */
+	private WeiboAuth mWeiboAuth;
+
+	/** 封装了 "access_token"，"expires_in"，"refresh_token"，并提供了他们的管理功能 */
+	private Oauth2AccessToken mAccessToken;
+
+	/** 注意：SsoHandler 仅当 SDK 支持 SSO 时有效 */
+	private SsoHandler mSsoHandler;
+
+	@Override
+	public void onCreate(Bundle savedInstanceState) {
+		super.onCreate(savedInstanceState);
+		setContentView(R.layout.generate_qrcode);
+
+		qrStrEditText = (EditText) this.findViewById(R.id.et_qr_string);
+		qrImgImageView = (ImageView) this.findViewById(R.id.iv_qr_image);
+
+		Button generateQRCodeButton = (Button) this
+				.findViewById(R.id.btn_add_qrcode);
+		generateQRCodeButton.setOnClickListener(new OnClickListener() {
+
+			@Override
+			public void onClick(View v) {
+				try {
+					String contentString = qrStrEditText.getText().toString();
+					if (!contentString.equals("")) {
+						Bitmap qrCodeBitmap = EncodingHandler.createQRCode(
+								contentString, 350);
+						
+						qrImgImageView.setImageBitmap(qrCodeBitmap);
+					} else {
+						Toast.makeText(GenerateQRCodeActivity.this,
+								"Text can not be empty", Toast.LENGTH_SHORT)
+								.show();
+					}
+
+				} catch (WriterException e) {
+					e.printStackTrace();
+				}
+			}
+		});
+
+		// ********************************************************** 分享到微博功能
+		// start
+		// 创建微博分享接口实例
+		// 创建微博实例
+		mWeiboAuth = new WeiboAuth(this, Constants.APP_KEY,
+				Constants.REDIRECT_URL, Constants.SCOPE);
+		mWeiboShareAPI = WeiboShareSDK.createWeiboAPI(this, Constants.APP_KEY);
+
+		// 注册第三方应用到微博客户端中，注册成功后该应用将显示在微博的应用列表中。
+		// 但该附件栏集成分享权限需要合作申请，详情请查看 Demo 提示
+		// NOTE：请务必提前注册，即界面初始化的时候或是应用程序初始化时，进行注册
+		mWeiboShareAPI.registerApp();
+
+		// 如果未安装微博客户端，设置下载微博对应的回调
+		if (!mWeiboShareAPI.isWeiboAppInstalled()) {
+			mWeiboShareAPI
+					.registerWeiboDownloadListener(new IWeiboDownloadListener() {
+						@Override
+						public void onCancel() {
+							Toast.makeText(GenerateQRCodeActivity.this,
+									R.string.cancel_download_weibo,
+									Toast.LENGTH_SHORT).show();
+						}
+					});
+		}
+
+		// 当 Activity 被重新初始化时（该 Activity 处于后台时，可能会由于内存不足被杀掉了），
+		// 需要调用 {@link IWeiboShareAPI#handleWeiboResponse} 来接收微博客户端返回的数据。
+		// 执行成功，返回 true，并调用 {@link IWeiboHandler.Response#onResponse}；
+		// 失败返回 false，不调用上述回调
+		if (savedInstanceState != null) {
+			mWeiboShareAPI.handleWeiboResponse(getIntent(), this);
+		}
+
+		Button weiboShare = (Button) this.findViewById(R.id.weibo_share);
+		weiboShare.setOnClickListener(new OnClickListener() {
+
+			@Override
+			public void onClick(View v) {
+			
+				mAccessToken = AccessTokenKeeper
+						.readAccessToken(GenerateQRCodeActivity.this);
+				if (mAccessToken.isSessionValid()) {
+					try {
+						// 检查微博客户端环境是否正常，如果未安装微博，弹出对话框询问用户下载微博客户端
+						if (mWeiboShareAPI.checkEnvironment(true)) {
+							sendMessage();
+						}
+					} catch (WeiboShareException e) {
+						Log.e("weiboShare", e.toString());
+						Toast.makeText(GenerateQRCodeActivity.this,
+								e.getMessage(), Toast.LENGTH_LONG).show();
+					}
+				} else {
+
+					mSsoHandler = new SsoHandler(GenerateQRCodeActivity.this,
+							mWeiboAuth);
+					mSsoHandler.authorize(new AuthListener());
+
+				}
+			}
+		});
+	}
+
+	@Override
+	protected void onNewIntent(Intent intent) {
+		super.onNewIntent(intent);
+		// 从当前应用唤起微博并进行分享后，返回到当前应用时，需要在此处调用该函数
+		// 来接收微博客户端返回的数据；执行成功，返回 true，并调用
+		// {@link IWeiboHandler.Response#onResponse}；失败返回 false，不调用上述回调
+		mWeiboShareAPI.handleWeiboResponse(intent, this);
+	}
+
+	@Override
+	public void onResponse(BaseResponse baseResp) {
+		switch (baseResp.errCode) {
+		case WBConstants.ErrorCode.ERR_OK:
+			Toast.makeText(this, "Share to Weibo Success！", Toast.LENGTH_LONG).show();
+			break;
+		case WBConstants.ErrorCode.ERR_CANCEL:
+			Toast.makeText(this, "Share is Canceled！", Toast.LENGTH_LONG).show();
+			break;
+		case WBConstants.ErrorCode.ERR_FAIL:
+			Toast.makeText(this, "Share to Weibo Failure！" + "Error Message: " + baseResp.errMsg,
+					Toast.LENGTH_LONG).show();
+			break;
+		}
+
+	}
+
+	/**
+	 * 第三方应用发送请求消息到微博，唤起微博分享界面。
+	 */
+	private void sendMessage() {
+
+		WeiboMessage weiboMessage = new WeiboMessage();
+		weiboMessage.mediaObject = getImageObj();
+		// 2. 初始化从第三方到微博的消息请求
+		SendMessageToWeiboRequest request = new SendMessageToWeiboRequest();
+		// 用transaction唯一标识一个请求
+		request.transaction = String.valueOf(System.currentTimeMillis());
+		request.message = weiboMessage;
+
+		// 3. 发送请求消息到微博，唤起微博分享界面
+		mWeiboShareAPI.sendRequest(request);
+
+	}
+
+	/**
+	 * 创建图片消息对象。
+	 * 
+	 * @return 图片消息对象。
+	 */
+	private ImageObject getImageObj() {
+		ImageObject imageObject = new ImageObject();
+		BitmapDrawable bitmapDrawable=null;
+		if(qrImgImageView!=null&&qrImgImageView.getDrawable()!=null){
+			bitmapDrawable = (BitmapDrawable) qrImgImageView.getDrawable();
+		}
+		else{//如果二维码未生成，直接点击分享到微博按钮，则默认分享本app的logo
+			bitmapDrawable = (BitmapDrawable) getResources().getDrawable(R.drawable.ic_launcher);
+		}
+		imageObject.setImageObject(bitmapDrawable.getBitmap());
+		return imageObject;
+	}
+
+	@Override
+	protected void onActivityResult(int requestCode, int resultCode, Intent data) {
+		super.onActivityResult(requestCode, resultCode, data);
+		if (data != null) {
+			if (mSsoHandler != null) {
+				mSsoHandler.authorizeCallBack(requestCode, resultCode, data);
+			}
+		}
+	}
+
+	/**
+	 * 微博认证授权回调类。 1. SSO 授权时，需要在 {@link #onActivityResult} 中调用
+	 * {@link SsoHandler#authorizeCallBack} 后， 该回调才会被执行。 2. 非 SSO
+	 * 授权时，当授权结束后，该回调就会被执行。 当授权成功后，请保存该 access_token、expires_in、uid 等信息到
+	 * SharedPreferences 中。
+	 */
+	class AuthListener implements WeiboAuthListener {
+
+		@Override
+		public void onComplete(Bundle values) {
+			// 从 Bundle 中解析 Token
+			mAccessToken = Oauth2AccessToken.parseAccessToken(values);
+			if (mAccessToken.isSessionValid()) {
+				// 显示 Token
+				// updateTokenView(false);
+
+				// 保存 Token 到 SharedPreferences
+				AccessTokenKeeper.writeAccessToken(GenerateQRCodeActivity.this,
+						mAccessToken);
+				/*
+				 * Toast.makeText(GenerateQRCodeActivity.this, "success",
+				 * Toast.LENGTH_SHORT).show();
+				 */
+				sendMessage();
+			} else {
+				// 以下几种情况，您会收到 Code：
+				// 1. 当您未在平台上注册的应用程序的包名与签名时；
+				// 2. 当您注册的应用程序包名与签名不正确时；
+				// 3. 当您在平台上注册的包名和签名与您当前测试的应用的包名和签名不匹配时。
+				String code = values.getString("code");
+				String message = "failed";
+				if (!TextUtils.isEmpty(code)) {
+					message = message + "\nObtained the code: " + code;
+				}
+				Toast.makeText(GenerateQRCodeActivity.this, message,
+						Toast.LENGTH_LONG).show();
+			}
+		}
+
+		@Override
+		public void onCancel() {
+			Toast.makeText(GenerateQRCodeActivity.this, "cancel",
+					Toast.LENGTH_LONG).show();
+		}
+
+		@Override
+		public void onWeiboException(WeiboException e) {
+			Toast.makeText(GenerateQRCodeActivity.this,
+					"Auth exception : " + e.getMessage(), Toast.LENGTH_LONG)
+					.show();
+		}
+	}
+
+}
