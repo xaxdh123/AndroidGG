@@ -1,0 +1,27 @@
+绘制自定义View流程                                                  |          public MyView(){
+______________________________________                            |             public void MyView(Context context) {}  
+步骤 | 关键字       |	作用                                         |             protected void onMeasure(int widthMeasureSpec,
+1   | 构造函数	    | View初始化                                    |                                     int heightMeasureSpec) {}
+2	  |onMeasure	   | 测量View大小                                  |             protected void onSizeChanged(int w, int h, 
+3   |onSizeChanged | 确定View大小                                  |                                        int oldw, int oldh) {}  
+4   |onLayout      | 确定子View布局(自定义View包含子View时有用)       |             protected void onLayout(boolean changed, 
+5	  |onDraw        | 实际绘制内容                                   |                              int l, int t, int r, int b) {} 
+6   |	提供接口	    | 控制View或监听View某些状态                      |             protected void onDraw(Canvas canvas) {} 
+______________________________________________                    |            }           
+一。构造函数                                                        \_____________________________________________________________
+    public void SloopView(Context context) {}                                                       //context 上下文
+    public void SloopView(Context context, AttributeSet attrs) {}                                   //attr 在attrs自定义属性
+    public void SloopView(Context context, AttributeSet attrs, int defStyleAttr) {}                 //defStyleAttr 默认Style
+    public void SloopView(Context context, AttributeSet attrs, int defStyleAttr, int defStyleRes) {}//API 21以上（一般不调用）
+    
+二。onMeasure()
+      "配置文件中定义的View大小"以及"自身对View的特殊需求"来设置View的大小.
+       == Xml 中 layout_width 和layout_height 属性
+   1. 类型   MeasureSpec.getMode() 获取 
+        EXACTLY: 父容器已经为子容器设置了尺寸。例如，在配置文件中，将View的大小设置为"固定的大小"或者"fill_parent"。
+        AT_MOST: 子容器可以是声明大小内的任意大小。例如，在配置文件中，将View设置为"wrap_content"。
+        UNSPECIFIED: 父容器对于子容器没有任何限制，子容器想要多大就多大。
+   2. 大小  MeasureSpec.getSize() 获取 
+       不过需要注意的是，通过该方法获取的大小是配置文件中定义的大小。如果我们自己对该View有特殊的大小要求，则需要根据情况进行处理。
+       注意：当我们计算出View的大小之后，记得通过View的setMeasuredDimension()将计算出的大小赋值给该View。
+三。onSizeChanged()
